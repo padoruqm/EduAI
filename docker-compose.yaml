@@ -1,0 +1,253 @@
+name: ${COMPOSE_PROJECT_NAME:-eduai}
+
+# EduAI - ha tang cho moi truong development (Tuan 1 cua lo trinh).
+#
+# File nay chi chua tang HA TANG. Cac service ung dung (api, worker, beat,
+# frontend, nginx) duoc de o dang comment o cuoi file, se bat len tu Tuan 2
+# khi da co code + Dockerfile.
+#
+# Moi credential doc tu file .env o thu muc goc (copy tu .env.example).
+#   docker compose up -d
+#   docker compose ps
+#   docker compose down        # giu du lieu
+#   docker compose down -v     # xoa sach ca volume
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL + pgvector : du lieu nghiep vu VA vector embedding trong cung 1 DB
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: eduai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Script bat extension, chi chay khi volume con rong
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - eduai-net
+
+  # ---------------------------------------------------------------------------
+  # Redis : cache cau tra loi AI (bai toan "200 cau hoi giong nhau"),
+  #         refresh token / blacklist, rate limit, Celery result backend
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: eduai-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      # AOF de cache AI khong mat sach sau moi lan restart
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-512mb}
+      - --maxmemory-policy
+      - allkeys-lru
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - eduai-net
+
+  # ---------------------------------------------------------------------------
+  # RabbitMQ : broker cho tac vu nang - embedding tai lieu, cham bai hang loat,
+  #            gui email/notification. UI quan ly o cong 15672.
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: eduai-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST:-/}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - eduai-net
+
+  # ---------------------------------------------------------------------------
+  # MinIO : luu file goc (PDF, Word, Slide, Video, anh bai lam). Tuong thich S3,
+  #         doi sang S3 that khi len production chi bang cach doi endpoint.
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: eduai-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - eduai-net
+
+  # ---------------------------------------------------------------------------
+  # minio-init : container chay 1 lan roi thoat, tao san cac bucket can dung.
+  #              Trang thai "Exited (0)" trong `docker compose ps` la binh thuong.
+  # ---------------------------------------------------------------------------
+  minio-init:
+    image: minio/mc:latest
+    container_name: eduai-minio-init
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET_DOCUMENTS: ${S3_BUCKET_DOCUMENTS:-eduai-documents}
+      S3_BUCKET_SUBMISSIONS: ${S3_BUCKET_SUBMISSIONS:-eduai-submissions}
+      S3_BUCKET_EXPORTS: ${S3_BUCKET_EXPORTS:-eduai-exports}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" &&
+      mc mb --ignore-existing local/\"$$S3_BUCKET_DOCUMENTS\" &&
+      mc mb --ignore-existing local/\"$$S3_BUCKET_SUBMISSIONS\" &&
+      mc mb --ignore-existing local/\"$$S3_BUCKET_EXPORTS\" &&
+      mc anonymous set none local/\"$$S3_BUCKET_DOCUMENTS\" &&
+      mc anonymous set none local/\"$$S3_BUCKET_SUBMISSIONS\" &&
+      mc anonymous set none local/\"$$S3_BUCKET_EXPORTS\" &&
+      echo '>> Buckets san sang:' && mc ls local/
+      "
+    networks:
+      - eduai-net
+
+volumes:
+  postgres_data:
+    name: eduai_postgres_data
+  redis_data:
+    name: eduai_redis_data
+  rabbitmq_data:
+    name: eduai_rabbitmq_data
+  minio_data:
+    name: eduai_minio_data
+
+networks:
+  eduai-net:
+    name: eduai-net
+    driver: bridge
+
+# =============================================================================
+# TUAN 2+ : bo comment cac service duoi day khi da co code va Dockerfile.
+# Nho doi host trong backend-fastapi/.env tu localhost sang ten service
+# (postgres / redis / rabbitmq / minio) khi chay backend trong container.
+# =============================================================================
+#
+#  api:
+#    build:
+#      context: ./backend-fastapi
+#      dockerfile: Dockerfile
+#      target: development
+#    container_name: eduai-api
+#    restart: unless-stopped
+#    env_file: ./backend-fastapi/.env
+#    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+#    ports:
+#      - "${API_PORT:-8000}:8000"
+#    volumes:
+#      - ./backend-fastapi:/app
+#    depends_on:
+#      postgres: { condition: service_healthy }
+#      redis: { condition: service_healthy }
+#      rabbitmq: { condition: service_healthy }
+#      minio: { condition: service_healthy }
+#    networks: [eduai-net]
+#
+#  worker:                      # Celery worker: embedding, OCR, cham bai, gui mail
+#    build:
+#      context: ./backend-fastapi
+#      target: development
+#    container_name: eduai-worker
+#    restart: unless-stopped
+#    env_file: ./backend-fastapi/.env
+#    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+#    volumes:
+#      - ./backend-fastapi:/app
+#    depends_on:
+#      rabbitmq: { condition: service_healthy }
+#      postgres: { condition: service_healthy }
+#    networks: [eduai-net]
+#
+#  beat:                        # Celery beat: nhac han nop bai, batch tinh analytics moi dem
+#    build:
+#      context: ./backend-fastapi
+#      target: development
+#    container_name: eduai-beat
+#    restart: unless-stopped
+#    env_file: ./backend-fastapi/.env
+#    command: celery -A app.workers.celery_app beat --loglevel=info
+#    depends_on:
+#      rabbitmq: { condition: service_healthy }
+#    networks: [eduai-net]
+#
+#  frontend:
+#    build:
+#      context: ./frontend-vue3
+#      target: development
+#    container_name: eduai-frontend
+#    restart: unless-stopped
+#    env_file: ./frontend-vue3/.env
+#    command: npm run dev -- --host 0.0.0.0
+#    ports:
+#      - "${FRONTEND_PORT:-5173}:5173"
+#    volumes:
+#      - ./frontend-vue3:/app
+#      - /app/node_modules
+#    networks: [eduai-net]
+#
+#  nginx:                       # Reverse proxy + TLS termination + serve static
+#    image: nginx:1.27-alpine
+#    container_name: eduai-nginx
+#    restart: unless-stopped
+#    ports:
+#      - "${NGINX_HTTP_PORT:-80}:80"
+#    volumes:
+#      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+#      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+#    depends_on: [api, frontend]
+#    networks: [eduai-net]

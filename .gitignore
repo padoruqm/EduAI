@@ -1,0 +1,51 @@
+docs/
+
+# --- Bien moi truong / credential (KHONG BAO GIO commit) ---------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+firebase-credentials.json
+google-vision-credentials.json
+
+# --- Python / FastAPI --------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+celerybeat-schedule*
+
+# --- Node / Vue3 -------------------------------------------------------------
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+coverage/
+playwright-report/
+test-results/
+
+# --- Docker / du lieu local --------------------------------------------------
+docker-compose.override.yaml
+docker-compose.override.yml
+volumes/
+
+# --- File tam / upload thu -------------------------------------------------
+*.log
+logs/
+tmp/
+uploads/
+
+# --- IDE / OS ----------------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
