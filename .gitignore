@@ -1,4 +1,9 @@
-docs/
+# --- Tai lieu ----------------------------------------------------------------
+# Bo qua PDF/DOCX trong docs/ nhung VAN commit cac file .md.
+# Phai dung `docs/*` chu khong phai `docs/`: git khong cho re-include file nam
+# trong mot thu muc da bi loai tru hoan toan.
+docs/*
+!docs/*.md
 
 # --- Bien moi truong / credential (KHONG BAO GIO commit) ---------------------
 .env
