@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from app.models.course import Course
     from app.models.teacher_profile import TeacherProfile
 
-
 class SchoolClass(Base, TimestampMixin):
     __tablename__ = "classes"
 
@@ -35,6 +34,7 @@ class SchoolClass(Base, TimestampMixin):
     )
 
     class_name: Mapped[str] = mapped_column(String(100), nullable=False, comment="Ví dụ 10A1")
+
     academic_year: Mapped[str] = mapped_column(
         String(9), nullable=False, comment="Dạng 2025-2026"
     )
@@ -43,6 +43,12 @@ class SchoolClass(Base, TimestampMixin):
         UUID(as_uuid=True),
         ForeignKey("teacher_profiles.user_id", ondelete="SET NULL"),
         comment="Giáo viên chủ nhiệm. NULL khi chưa phân công",
+    )
+
+    number_of_students: Mapped[int] = mapped_column(
+        nullable=False,
+        server_default=text("0"),
+        comment="Sĩ số hiện tại (COUNT class_students WHERE left_at IS NULL)",
     )
 
     # Không truyền name= cho UniqueConstraint và Index: để NAMING_CONVENTION ở

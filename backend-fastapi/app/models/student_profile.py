@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from app.models.class_student import ClassStudent
     from app.models.user import User
 
-
 class StudentProfile(Base, TimestampMixin):
     __tablename__ = "student_profiles"
 
@@ -41,16 +40,11 @@ class StudentProfile(Base, TimestampMixin):
         comment="Vừa là khoá chính vừa là khoá ngoại — quan hệ 1-1 với users"
     )
 
-    student_code: Mapped[str | None] = mapped_column(
-        String(50),
-        unique=True,
-        comment="Mã học sinh của trường",
-    )
-
     user: Mapped["User"] = relationship(back_populates="student_profile")
+
     class_memberships: Mapped[list["ClassStudent"]] = relationship(
         back_populates="student"
     )
 
     def __repr__(self) -> str:
-        return f"<StudentProfile user_id={self.user_id} code={self.student_code!r}>"
+        return f"<StudentProfile user_id={self.user_id} class_id={self.class_id}>"

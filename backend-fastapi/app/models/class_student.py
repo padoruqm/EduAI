@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from app.models.school_class import SchoolClass
     from app.models.student_profile import StudentProfile
 
-
 class ClassStudent(Base, TimestampMixin):
     __tablename__ = "class_students"
 
@@ -32,9 +31,10 @@ class ClassStudent(Base, TimestampMixin):
         ForeignKey("classes.id", ondelete="CASCADE"),
         primary_key=True,
     )
+    
     student_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("student_profiles.user_id", ondelete="CASCADE"),
+        ForeignKey("student_profiles.id", ondelete="CASCADE"),
         primary_key=True,
     )
 
@@ -44,6 +44,7 @@ class ClassStudent(Base, TimestampMixin):
         server_default=func.now(),
         comment="Ngày được xếp vào lớp",
     )
+    
     left_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         comment="NULL = đang học. Có giá trị = đã chuyển lớp hoặc thôi học",

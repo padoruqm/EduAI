@@ -7,8 +7,6 @@
 Học sinh của một lớp học phần KHÔNG có bảng riêng — đó chính là `class_students`
 của `course.class_id`. Lớp có sĩ số cố định, học môn nào cũng là nhóm học sinh đó.
 """
-
-import enum
 import uuid
 from typing import TYPE_CHECKING
 
@@ -17,25 +15,12 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+from app.constants import CourseStatus, Term
 
 if TYPE_CHECKING:
     from app.models.school_class import SchoolClass
     from app.models.subject import Subject
     from app.models.teacher_profile import TeacherProfile
-
-
-class Term(str, enum.Enum):
-    """Học kỳ mà lớp học phần này chạy."""
-
-    HK1 = "hk1"
-    HK2 = "hk2"
-    CA_NAM = "ca_nam"  # môn dạy suốt năm, không chia học kỳ
-
-
-class CourseStatus(str, enum.Enum):
-    ACTIVE = "active"
-    ARCHIVED = "archived"  # hết học kỳ: ẩn khỏi danh sách chính, giữ nguyên dữ liệu
-
 
 class Course(Base, TimestampMixin):
     __tablename__ = "courses"

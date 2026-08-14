@@ -1,4 +1,3 @@
-import enum
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -8,17 +7,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+from app.constants import Role
 
 if TYPE_CHECKING:
     from app.models.student_profile import StudentProfile
     from app.models.teacher_profile import TeacherProfile
-
-
-class Role(str, enum.Enum):
-    ADMIN = "admin"
-    TEACHER = "teacher"
-    STUDENT = "student"
-
 
 class User(Base, TimestampMixin):
     __tablename__ = "users"
