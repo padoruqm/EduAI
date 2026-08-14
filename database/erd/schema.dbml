@@ -53,7 +53,6 @@ Enum term {
 }
 
 // --- Tài khoản --------------------------------------------------------------
-
 Table users {
   id              uuid         [pk, default: `gen_random_uuid()`]
   email           varchar(255) [not null, unique, note: 'Luôn lưu chữ thường (BR-AUTH-01)']

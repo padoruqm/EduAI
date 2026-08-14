@@ -27,10 +27,18 @@ if TYPE_CHECKING:
 class StudentProfile(Base, TimestampMixin):
     __tablename__ = "student_profiles"
 
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default="gen_random_uuid()",
+        unique=True,
+        comment="Id học sinh từng lớp"
+    )
+
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        primary_key=True,
+        comment="Vừa là khoá chính vừa là khoá ngoại — quan hệ 1-1 với users"
     )
 
     student_code: Mapped[str | None] = mapped_column(

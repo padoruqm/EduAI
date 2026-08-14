@@ -5,7 +5,7 @@ Model nào không được import ở đây thì `alembic revision --autogenerat
 như không tồn tại — tệ hơn nữa, nếu bảng đó đã có dưới DB thì Alembic tưởng nó
 thừa và sinh ra lệnh DROP TABLE.
 
-Thêm model mới thì thêm một dòng import vào đây, đừng bỏ qua bước này.
+Thêm model mới thì PHẢI thêm một dòng import vào đây.
 
 Việc import cả cụm cũng giải quyết luôn quan hệ khai báo bằng chuỗi
 (`Mapped["Course"]`): SQLAlchemy chỉ tra được tên đó khi class tương ứng đã được

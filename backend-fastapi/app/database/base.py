@@ -28,10 +28,10 @@ NAMING_CONVENTION = {
 }
 
 
+# Lớp cha cho các model ORM
 class Base(DeclarativeBase):
     """Base chung. Alembic đọc `Base.metadata` để so sánh model với DB thật."""
-
-    metadata = MetaData(naming_convention=NAMING_CONVENTION)
+    metadata = MetaData(nameing_convention=NAMING_CONVENTION)
 
 
 class TimestampMixin:
