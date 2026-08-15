@@ -26,26 +26,24 @@ if TYPE_CHECKING:
 class TeacherProfile(Base, TimestampMixin):
     __tablename__ = "teacher_profiles"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        primary_key=True,
-    )
-
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
         unique=True,
         comment="Vừa là khoá chính vừa là khoá ngoại — quan hệ 1-1 với users",
     )
 
     address: Mapped[str | None] = mapped_column(String(255))
 
+    phone: Mapped[str | None] = mapped_column(String(20))
+
     specialization: Mapped[str | None] = mapped_column(
         String(255),
         comment="Bộ môn chính, ví dụ Toán"
     )
 
-    office: Mapped[str | None] = mapped_column(String(255))
+    office: Mapped[str] = mapped_column(String(255))
 
     # ORM relationship với User. Không dùng `uselist=False` vì SQLAlchemy tự nhận ra
     # quan hệ 1-1 dựa trên khoá chính user_id.

@@ -32,6 +32,7 @@ class Subject(Base, TimestampMixin):
         unique=True,
         comment="Mã ngắn, ví dụ TOAN — dùng để hiển thị và import danh sách",
     )
+    
     name: Mapped[str] = mapped_column(String(100), nullable=False)
 
     courses: Mapped[list["Course"]] = relationship(back_populates="subject")

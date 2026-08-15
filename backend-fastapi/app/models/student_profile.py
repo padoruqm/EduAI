@@ -13,11 +13,13 @@ năm học trước.
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, Date
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+
+from datetime import date
 
 if TYPE_CHECKING:
     from app.models.class_student import ClassStudent
@@ -26,18 +28,24 @@ if TYPE_CHECKING:
 class StudentProfile(Base, TimestampMixin):
     __tablename__ = "student_profiles"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        server_default="gen_random_uuid()",
-        unique=True,
-        comment="Id học sinh từng lớp"
-    )
-
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        unique=True,
         comment="Vừa là khoá chính vừa là khoá ngoại — quan hệ 1-1 với users"
+    )
+
+    date_of_birth: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+        comment="Ngày sinh, định dạng YYYY-MM-DD. NULL nếu chưa biết."
+    )
+
+    phone_of_parent: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Số điện thoại của phụ huynh, NULL nếu chưa biết."
     )
 
     user: Mapped["User"] = relationship(back_populates="student_profile")

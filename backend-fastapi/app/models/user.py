@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
-from app.constants import Role
+from app.constants.index import Role
 
 if TYPE_CHECKING:
     from app.models.student_profile import StudentProfile
@@ -77,36 +77,16 @@ class User(Base, TimestampMixin):
         comment="Hiển thị ở màn Admin quản lý người dùng (UC-CRS-11)",
     )
 
-    __table_args__ = (
-        # Chốt chặn ở tầng DB cho BR-AUTH-01. Service vẫn phải tự .lower(), nhưng
-        # nếu có chỗ nào quên thì INSERT sẽ nổ ngay thay vì lặng lẽ tạo ra hai tài
-        # khoản "An@gmail.com" và "an@gmail.com" trỏ về cùng một người.
-        CheckConstraint("email = lower(email)", name="email_lowercase"),
-        # Không cho tồn tại tài khoản không còn lối vào nào: gỡ liên kết Google
-        # khi chưa đặt mật khẩu sẽ bị chặn tại đây (BR-AUTH-12).
-        CheckConstraint(
-            "hashed_password IS NOT NULL OR google_id IS NOT NULL",
-            name="has_login_method",
-        ),
-        # Màn hình Admin lọc theo role + trạng thái (UC-CRS-11).
-        Index(None, "role", "is_active"),
-        # Tìm kiếm bỏ dấu (BR-CRS-13) cần index trên biểu thức unaccent(full_name).
-        # unaccent() không IMMUTABLE nên Postgres từ chối đưa vào index; phải bọc
-        # bằng một hàm wrapper IMMUTABLE, viết thẳng op.execute(...) trong migration.
-    )
-
-    # Hồ sơ riêng theo vai trò, quan hệ 1-1. Kiểu `X | None` nói cho SQLAlchemy
-    # biết đây là quan hệ một-một (không phải danh sách) — không cần uselist=False.
-    #
-    # Một user chỉ có hồ sơ ứng với role của mình: role=teacher thì có
-    # teacher_profile, role=student thì có student_profile, role=admin thì không
-    # có hồ sơ nào. DB không tự ép được điều này, service phải tạo và xoá hồ sơ
-    # khi Admin đổi role (UC-CRS-13).
     teacher_profile: Mapped["TeacherProfile | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
     student_profile: Mapped["StudentProfile | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        # Chỉ giữ lại Index hỗ trợ trang Admin lọc cho nhanh
+        Index(None, "role", "is_active"),
     )
 
     def __repr__(self) -> str:

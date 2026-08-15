@@ -51,24 +51,22 @@ class SchoolClass(Base, TimestampMixin):
         comment="Sĩ số hiện tại (COUNT class_students WHERE left_at IS NULL)",
     )
 
-    # Không truyền name= cho UniqueConstraint và Index: để NAMING_CONVENTION ở
-    # db/base.py tự sinh tên (uq_classes_class_name_academic_year...). Đặt tên tay
-    # thì SQLAlchemy dùng nguyên tên đó, bỏ qua convention, và schema sẽ có hai
-    # kiểu đặt tên lẫn lộn.
+    # Một lớp không thể học cùng một môn nhiều lần trong cùng một năm học
     __table_args__ = (
-        # Tên 10A1 lặp lại mỗi năm là hợp lệ; trùng trong cùng một năm thì không.
-        UniqueConstraint("class_name", "academic_year"),
-        # "Một giáo viên chủ nhiệm tối đa một lớp" là ràng buộc TRONG MỘT NĂM HỌC.
-        # Bỏ academic_year ra khỏi ràng buộc này là hỏng: giáo viên đã chủ nhiệm
-        # 10A1 năm nay sẽ vĩnh viễn không chủ nhiệm được lớp nào ở các năm sau.
-        # Cột homeroom_teacher_id nullable nên Postgres coi các NULL là khác nhau
-        # — nhiều lớp chưa phân công chủ nhiệm vẫn cùng tồn tại được.
-        UniqueConstraint("homeroom_teacher_id", "academic_year"),
+        UniqueConstraint(
+            "class_id",
+            "subject_id",
+            "term",
+            name="uq_course_class_subject_term",
+        ),
     )
 
     homeroom_teacher: Mapped["TeacherProfile | None"] = relationship(
         back_populates="homeroom_classes"
     )
+    # ORM relationship với ClassStudent và Course. Cascade "all, delete-orphan" để
+    # khi xoá lớp thì xoá luôn các dòng liên quan trong hai bảng kia.
+    # Một lớp thì có nhiều học sinh và nhiều môn học, nhưng một học sinh chỉ thuộc một lớp
     students: Mapped[list["ClassStudent"]] = relationship(
         back_populates="school_class", cascade="all, delete-orphan"
     )

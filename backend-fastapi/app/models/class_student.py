@@ -25,13 +25,13 @@ if TYPE_CHECKING:
 class ClassStudent(Base, TimestampMixin):
     __tablename__ = "class_students"
 
-    # Khoá chính ghép — chặn ghi danh trùng ở tầng DB, không cần cột id thừa.
+    # Khoá chính ghép (class_id, student_id) — chặn ghi danh trùng ở tầng DB, không cần cột id thừa.
     class_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("classes.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    
+
     student_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("student_profiles.id", ondelete="CASCADE"),
@@ -49,19 +49,6 @@ class ClassStudent(Base, TimestampMixin):
         DateTime(timezone=True),
         comment="NULL = đang học. Có giá trị = đã chuyển lớp hoặc thôi học",
     )
-
-    # name=None để NAMING_CONVENTION tự sinh (ix_class_students_student_id).
-    __table_args__ = (Index(None, "student_id"),)
-
-    # Không có cột `status`. Đang học = `left_at IS NULL`. Status suy ra được từ
-    # left_at, thêm vào là tự tạo ra hai nguồn sự thật cho cùng một câu hỏi.
-    #
-    # Học sinh rời lớp = ghi left_at, KHÔNG xoá dòng: bài nộp và điểm phải được
-    # giữ lại để còn đối chiếu và thống kê về sau.
-    #
-    # Quy tắc "một học sinh chỉ thuộc một lớp đang hoạt động trong mỗi năm học"
-    # KHÔNG đặt được bằng UniqueConstraint ở đây, vì academic_year nằm ở bảng
-    # classes chứ không nằm ở bảng này. Phải kiểm ở service khi xếp lớp.
 
     school_class: Mapped["SchoolClass"] = relationship(back_populates="students")
     student: Mapped["StudentProfile"] = relationship(back_populates="class_memberships")
