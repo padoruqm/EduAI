@@ -12,11 +12,11 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, func
+from sqlalchemy import DateTime, ForeignKey, Index, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin
+from app.database.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.school_class import SchoolClass
@@ -34,7 +34,7 @@ class ClassStudent(Base, TimestampMixin):
 
     student_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("student_profiles.id", ondelete="CASCADE"),
+        ForeignKey("student_profiles.user_id", ondelete="RESTRICT"),
         primary_key=True,
     )
 
@@ -48,6 +48,20 @@ class ClassStudent(Base, TimestampMixin):
     left_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         comment="NULL = đang học. Có giá trị = đã chuyển lớp hoặc thôi học",
+    )
+
+    __table_args__ = (
+        # Một học sinh chỉ ĐANG học đúng một lớp. Unique một phần (partial index):
+        # chỉ áp dụng cho dòng còn hiệu lực, nên vẫn giữ được đủ lịch sử các lớp cũ.
+        Index(
+            "uq_class_students_active_student",
+            "student_id",
+            unique=True,
+            postgresql_where=text("left_at IS NULL"),
+        ),
+        # Postgres không tự tạo index cho khoá ngoại, mà PK ghép lại dẫn đầu bằng
+        # class_id — nên tra "toàn bộ lịch sử lớp của học sinh này" phải quét bảng.
+        Index(None, "student_id"),
     )
 
     school_class: Mapped["SchoolClass"] = relationship(back_populates="students")

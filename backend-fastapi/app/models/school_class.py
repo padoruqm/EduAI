@@ -17,7 +17,7 @@ from sqlalchemy import ForeignKey, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin
+from app.database.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.class_student import ClassStudent
@@ -45,20 +45,12 @@ class SchoolClass(Base, TimestampMixin):
         comment="Giáo viên chủ nhiệm. NULL khi chưa phân công",
     )
 
-    number_of_students: Mapped[int] = mapped_column(
-        nullable=False,
-        server_default=text("0"),
-        comment="Sĩ số hiện tại (COUNT class_students WHERE left_at IS NULL)",
-    )
-
-    # Một lớp không thể học cùng một môn nhiều lần trong cùng một năm học
     __table_args__ = (
-        UniqueConstraint(
-            "class_id",
-            "subject_id",
-            "term",
-            name="uq_course_class_subject_term",
-        ),
+        # Không thể có hai lớp 10A1 trong cùng một năm học.
+        UniqueConstraint("class_name", "academic_year"),
+        # Một giáo viên chủ nhiệm tối đa một lớp mỗi năm học. Postgres coi mọi
+        # NULL là khác nhau, nên nhiều lớp chưa phân công GVCN vẫn hợp lệ.
+        UniqueConstraint("homeroom_teacher_id", "academic_year"),
     )
 
     homeroom_teacher: Mapped["TeacherProfile | None"] = relationship(
@@ -74,10 +66,6 @@ class SchoolClass(Base, TimestampMixin):
         back_populates="school_class", cascade="all, delete-orphan"
     )
 
-    # Không có thuộc tính number_of_students. Sĩ số là dữ liệu dẫn xuất
-    # (COUNT class_students WHERE left_at IS NULL) — repository đếm bằng SQL,
-    # đừng len(self.students) vì nó nạp cả danh sách về Python chỉ để đếm, và
-    # cũng đếm nhầm cả những em đã chuyển lớp.
 
     def __repr__(self) -> str:
         return f"<SchoolClass {self.class_name!r} {self.academic_year}>"

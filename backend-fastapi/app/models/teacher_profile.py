@@ -16,7 +16,7 @@ from sqlalchemy import ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin
+from app.database.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.course import Course
@@ -30,7 +30,6 @@ class TeacherProfile(Base, TimestampMixin):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
-        unique=True,
         comment="Vừa là khoá chính vừa là khoá ngoại — quan hệ 1-1 với users",
     )
 
@@ -40,10 +39,10 @@ class TeacherProfile(Base, TimestampMixin):
 
     specialization: Mapped[str | None] = mapped_column(
         String(255),
-        comment="Bộ môn chính, ví dụ Toán"
+        comment="Bộ môn chính, ví dụ Toán. NULL khi hồ sơ chưa khai báo đủ"
     )
 
-    office: Mapped[str] = mapped_column(String(255))
+    office: Mapped[str | None] = mapped_column(String(255), comment="Phòng làm việc")
 
     # ORM relationship với User. Không dùng `uselist=False` vì SQLAlchemy tự nhận ra
     # quan hệ 1-1 dựa trên khoá chính user_id.

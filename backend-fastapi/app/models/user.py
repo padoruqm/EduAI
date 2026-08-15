@@ -6,7 +6,7 @@ from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, Index, String, 
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin
+from app.database.base import Base, TimestampMixin
 from app.constants.index import Role
 
 if TYPE_CHECKING:
@@ -87,6 +87,10 @@ class User(Base, TimestampMixin):
     __table_args__ = (
         # Chỉ giữ lại Index hỗ trợ trang Admin lọc cho nhanh
         Index(None, "role", "is_active"),
+        CheckConstraint(
+        "hashed_password IS NOT NULL OR google_id IS NOT NULL",
+        name="has_login_method",
+        )
     )
 
     def __repr__(self) -> str:

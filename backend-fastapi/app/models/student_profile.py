@@ -17,7 +17,7 @@ from sqlalchemy import ForeignKey, String, Date
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin
+from app.database.base import Base, TimestampMixin
 
 from datetime import date
 
@@ -32,7 +32,6 @@ class StudentProfile(Base, TimestampMixin):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
-        unique=True,
         comment="Vừa là khoá chính vừa là khoá ngoại — quan hệ 1-1 với users"
     )
 
@@ -55,4 +54,4 @@ class StudentProfile(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        return f"<StudentProfile user_id={self.user_id} class_id={self.class_id}>"
+        return f"<StudentProfile user_id={self.user_id}>"

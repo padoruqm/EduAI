@@ -29,11 +29,32 @@
 // Học sinh của một `course` KHÔNG có bảng riêng: đó chính là class_students
 // của courses.class_id. Đây là ý nghĩa của "lớp có sĩ số cố định, học môn nào
 // cũng là nhóm học sinh đó".
+//
+// -----------------------------------------------------------------------------
+// GIỚI HẠN CỦA DBML — những thứ CÓ trong models/ nhưng DBML không vẽ được:
+//
+//   1. CHECK constraint. Bảng `users` có:
+//        ck_users_has_login_method:
+//          CHECK (hashed_password IS NOT NULL OR google_id IS NOT NULL)
+//      → không cho tạo user không đăng nhập được bằng cách nào (BR-AUTH-07).
+//
+//   2. Partial index. Bảng `class_students` có:
+//        uq_class_students_active_student:
+//          UNIQUE (student_id) WHERE left_at IS NULL
+//      → một học sinh chỉ ĐANG học đúng một lớp, nhưng vẫn giữ đủ lịch sử
+//        các lớp cũ (những dòng đã có left_at).
+//
+//   3. Sĩ số lớp. KHÔNG có cột `number_of_students`. Đây là dữ liệu dẫn xuất:
+//        SELECT count(*) FROM class_students
+//         WHERE class_id = :id AND left_at IS NULL
+//      Nuôi một cột đếm sẵn thì mọi đường ghi (xếp lớp / chuyển lớp / thôi học)
+//      đều phải nhớ cập nhật, quên một chỗ là số liệu sai vĩnh viễn.
 // =============================================================================
 
-// --- Kiểu liệt kê -----------------------------------------------------------
-// Dùng enum thay cho varchar tự do: DB tự chặn giá trị sai, không phụ thuộc vào
-// việc tầng application có nhớ validate hay không.
+// --- Enum --------------------------------------------------------------------
+// Giá trị lưu xuống DB là chữ THƯỜNG (app/constants/index.py dùng
+// values_callable để ép SQLAlchemy lưu .value chứ không lưu tên member).
+// Frontend đọc đúng các chuỗi này trong JWT và trong response.
 
 Enum user_role {
   admin
@@ -41,215 +62,139 @@ Enum user_role {
   student
 }
 
-Enum course_status {
-  active
-  archived  [note: 'Hết học kỳ — ẩn khỏi danh sách chính, giữ nguyên toàn bộ dữ liệu']
-}
-
 Enum term {
   hk1
   hk2
-  ca_nam    [note: 'Môn dạy suốt năm, không chia học kỳ']
+  ca_nam [note: 'Môn dạy suốt năm, không chia học kỳ']
 }
 
-// --- Tài khoản --------------------------------------------------------------
+Enum course_status {
+  active
+  archived [note: 'Hết học kỳ: ẩn khỏi danh sách chính, giữ nguyên dữ liệu']
+}
+
+// --- M1: Authentication ------------------------------------------------------
+
 Table users {
-  id              uuid         [pk, default: `gen_random_uuid()`]
-  email           varchar(255) [not null, unique, note: 'Luôn lưu chữ thường (BR-AUTH-01)']
-  full_name       varchar(255) [not null]
-  avatar_url      varchar(512)
-  role            user_role    [not null, default: 'student', note: 'Đăng ký tự do luôn ra student (BR-AUTH-06)']
+  id uuid [pk, default: `gen_random_uuid()`]
+  email varchar(255) [not null, unique, note: 'Luôn lưu chữ thường (BR-AUTH-01)']
+  full_name varchar(255) [not null]
+  avatar_url varchar(512)
+  role user_role [not null, default: 'student', note: 'Đăng ký tự do luôn ra student (BR-AUTH-06)']
   hashed_password varchar(255) [note: 'NULL nếu chỉ đăng nhập bằng Google (BR-AUTH-07)']
-  google_id       varchar(255) [unique, note: 'Trường sub của Google, NULL nếu chưa liên kết (FR-AUTH-05/06)']
-  is_active       boolean      [not null, default: true, note: 'false = bị Admin khoá (FR-AUTH-11)']
-  last_login_at   timestamptz  [note: 'Cột hiển thị ở màn Admin quản lý user (UC-CRS-11)']
-  created_at      timestamptz  [not null, default: `now()`]
-  updated_at      timestamptz  [not null, default: `now()`]
+  google_id varchar(255) [unique, note: 'Trường sub của Google, NULL nếu chưa liên kết (FR-AUTH-05/06)']
+  is_active boolean [not null, default: true, note: 'false = bị Admin khoá (FR-AUTH-11)']
+  last_login_at timestamptz [note: 'Cột hiển thị ở màn Admin quản lý user (UC-CRS-11)']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
 
   indexes {
     (role, is_active) [note: 'Màn Admin lọc theo role + trạng thái']
   }
 
-  Note: '''
-  MỘT bảng users duy nhất cho cả Admin / Teacher / Student, phân biệt bằng cột
-  role. Không tách thành ba bảng. Dữ liệu RIÊNG của từng vai trò nằm ở bảng
-  hồ sơ 1-1 bên dưới, không nhồi thêm cột nullable vào đây.
-
-  Ràng buộc phải thêm ở tầng migration (dbml không diễn đạt được CHECK):
-    - CHECK (email = lower(email))
-    - CHECK (hashed_password IS NOT NULL OR google_id IS NOT NULL)
-      chặn tài khoản không còn lối vào nào (BR-AUTH-12)
-    - Index trên unaccent(full_name) phục vụ tìm kiếm bỏ dấu (BR-CRS-13)
-  '''
+  Note: 'CHECK ck_users_has_login_method: hashed_password IS NOT NULL OR google_id IS NOT NULL'
 }
 
-// --- Hồ sơ theo vai trò -----------------------------------------------------
-// Quan hệ 1-1 với users, dùng chính user_id làm khoá chính. Chỉ chứa trường
-// RIÊNG của vai trò; tên, email, ảnh đại diện nằm ở users, không lặp lại.
-//
-// Hai bảng này cũng là cách chặn ở tầng DB: chỉ ai có teacher_profiles mới
-// được phân công dạy, chỉ ai có student_profiles mới được xếp vào lớp.
+// --- M2: User & Class --------------------------------------------------------
 
 Table teacher_profiles {
-  user_id        uuid         [pk, note: 'PK trùng FK — một user có tối đa một hồ sơ']
+  user_id uuid [pk, note: 'Vừa là PK vừa là FK — quan hệ 1-1 với users']
+  address varchar(255)
+  phone varchar(20)
   specialization varchar(255) [note: 'Bộ môn chính, ví dụ Toán']
-  office         varchar(255)
-  address        varchar(255)
-  created_at     timestamptz  [not null, default: `now()`]
-  updated_at     timestamptz  [not null, default: `now()`]
+  office varchar(255) [note: 'Phòng làm việc']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: 'Có dòng ở đây = được phân công dạy. courses.teacher_id và classes.homeroom_teacher_id đều trỏ về bảng này chứ không về users.id, nên Postgres tự chặn việc xếp một học sinh đi dạy.'
 }
 
 Table student_profiles {
-  user_id      uuid        [pk]
-  student_code varchar(50) [unique, note: 'Mã học sinh của trường']
-  created_at   timestamptz [not null, default: `now()`]
-  updated_at   timestamptz [not null, default: `now()`]
+  user_id uuid [pk, note: 'Vừa là PK vừa là FK — quan hệ 1-1 với users']
+  date_of_birth date [note: 'YYYY-MM-DD']
+  phone_of_parent varchar(20)
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
 
-  Note: '''
-  KHÔNG có cột class_id. Học sinh thuộc lớp nào là thông tin của bảng
-  class_students, vì nó thay đổi theo từng năm học và phải giữ được lịch sử.
-
-  Cột class_id chỉ lưu được lớp HIỆN TẠI: sang năm cập nhật sang lớp mới là
-  danh sách lớp năm cũ rỗng, không còn tra được điểm và bài nộp năm ngoái.
-  '''
+  Note: 'KHÔNG có cột class_id. Học sinh thuộc lớp nào là việc của class_students — một cột class_id chỉ lưu được lớp HIỆN TẠI, sang năm cập nhật là mất sạch danh sách lớp năm cũ.'
 }
-
-// --- Lớp chính quy ----------------------------------------------------------
 
 Table classes {
-  id                  uuid         [pk, default: `gen_random_uuid()`]
-  class_name          varchar(100) [not null, note: 'Ví dụ 10A1']
-  academic_year       varchar(9)   [not null, note: 'Dạng 2025-2026']
-  homeroom_teacher_id uuid         [note: 'Giáo viên chủ nhiệm. NULL khi chưa phân công']
-  created_at          timestamptz  [not null, default: `now()`]
-  updated_at          timestamptz  [not null, default: `now()`]
+  id uuid [pk, default: `gen_random_uuid()`]
+  class_name varchar(100) [not null, note: 'Ví dụ: 11A8']
+  academic_year varchar(9) [not null, note: 'Dạng 2025-2026']
+  homeroom_teacher_id uuid [note: 'Giáo viên chủ nhiệm. NULL khi chưa phân công']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (class_name, academic_year) [unique, note: 'Tên 10A1 lặp lại mỗi năm là hợp lệ, trùng trong cùng một năm thì không']
-    (homeroom_teacher_id, academic_year) [unique, note: 'Một giáo viên chủ nhiệm tối đa MỘT lớp MỖI NĂM HỌC']
+    (class_name, academic_year) [unique, note: 'Không thể có hai lớp 10A1 trong cùng một năm học']
+    (homeroom_teacher_id, academic_year) [unique, note: 'Một GVCN tối đa một lớp mỗi năm học. Postgres coi mọi NULL là khác nhau nên nhiều lớp chưa phân công vẫn hợp lệ']
   }
 
-  Note: '''
-  Mỗi dòng là một lớp CỦA MỘT NĂM HỌC cụ thể. Lớp 10A1 năm 2025-2026 và lớp
-  11A1 năm 2026-2027 là hai dòng khác nhau, kể cả khi cùng nhóm học sinh.
-  Nhờ vậy danh sách lớp cũ không bao giờ bị ghi đè khi học sinh lên lớp.
-
-  Ràng buộc unique trên (homeroom_teacher_id, academic_year) phải có CẢ cột năm
-  học. Nếu chỉ unique trên homeroom_teacher_id thì giáo viên đã chủ nhiệm 10A1
-  năm nay sẽ vĩnh viễn không chủ nhiệm được lớp nào ở những năm sau.
-
-  KHÔNG lưu cột number_of_students. Sĩ số là dữ liệu dẫn xuất
-  (COUNT class_students WHERE left_at IS NULL). Lưu sẵn thì sẽ lệch với thực tế
-  ngay lần đầu quên cập nhật, và lúc đó không có cách nào biết con số nào đúng.
-  '''
+  Note: 'Mỗi dòng là một lớp CỦA MỘT NĂM HỌC cụ thể. 10A1 năm 2025-2026 và 11A1 năm 2026-2027 là hai dòng khác nhau, kể cả khi cùng một nhóm học sinh. Tên bảng là classes, tên class Python là SchoolClass vì class là từ khoá Python.'
 }
 
-// --- Danh sách học sinh của lớp ---------------------------------------------
-
 Table class_students {
-  class_id    uuid        [not null]
-  student_id  uuid        [not null]
+  class_id uuid [not null]
+  student_id uuid [not null]
   enrolled_at timestamptz [not null, default: `now()`, note: 'Ngày được xếp vào lớp']
-  left_at     timestamptz [note: 'NULL = đang học. Có giá trị = đã chuyển lớp / thôi học']
-  created_at  timestamptz [not null, default: `now()`]
-  updated_at  timestamptz [not null, default: `now()`]
+  left_at timestamptz [note: 'NULL = đang học. Có giá trị = đã chuyển lớp hoặc thôi học']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
 
   indexes {
     (class_id, student_id) [pk]
-    student_id [note: 'Tra các lớp một học sinh đã và đang học']
+    student_id [note: 'FK không được Postgres tự index, mà PK ghép dẫn đầu bằng class_id — cần index riêng để tra lịch sử lớp của một học sinh']
   }
 
-  Note: '''
-  NGUỒN SỰ THẬT DUY NHẤT về "ai học lớp này". Danh sách gắn vào LỚP, không gắn
-  vào từng môn: lớp 10A1 có 40 học sinh thì cả 12 môn đều là đúng 40 em đó.
-  Ghi danh theo từng môn sẽ lặp lại 12 lần cùng một danh sách, và chỉ cần quên
-  một dòng là học sinh mất quyền vào một môn.
-
-  KHÔNG thêm cột status. Đang học = left_at IS NULL. Status suy ra được từ
-  left_at, thêm vào là tự tạo ra hai nguồn sự thật lần nữa.
-
-  Học sinh rời lớp = ghi left_at, KHÔNG xoá dòng — bài nộp và điểm phải giữ lại.
-
-  Quy tắc "một học sinh chỉ thuộc một lớp đang hoạt động trong mỗi năm học"
-  KHÔNG diễn đạt được bằng UNIQUE ở đây, vì academic_year nằm ở bảng classes.
-  Phải kiểm ở tầng service và có test riêng.
-  '''
+  Note: 'NGUỒN SỰ THẬT DUY NHẤT về "ai học lớp này". Danh sách gắn vào LỚP, không gắn vào từng môn. Thêm: UNIQUE (student_id) WHERE left_at IS NULL — một học sinh chỉ đang học một lớp.'
 }
-
-// --- Môn học ----------------------------------------------------------------
-
-Table subjects {
-  id         uuid         [pk, default: `gen_random_uuid()`]
-  code       varchar(20)  [not null, unique, note: 'Mã ngắn, ví dụ TOAN — dùng để hiển thị và import']
-  name       varchar(100) [not null]
-  created_at timestamptz  [not null, default: `now()`]
-  updated_at timestamptz  [not null, default: `now()`]
-
-  Note: 'PK uuid giống mọi bảng khác; mã môn nằm ở cột code có unique, đổi mã môn không phải đi sửa khoá ngoại.'
-}
-
-// --- Lớp học phần (đơn vị dạy — mọi module AI treo vào bảng này) ------------
 
 Table courses {
-  id          uuid          [pk, default: `gen_random_uuid()`]
-  class_id    uuid          [not null, note: 'Lớp nào học']
-  subject_id  uuid          [not null, note: 'Môn gì']
-  teacher_id  uuid          [not null, note: 'Ai dạy — đúng MỘT giáo viên (BR-CRS-01)']
-  term        term          [not null, default: 'ca_nam']
-  description text
-  status      course_status [not null, default: 'active']
-  created_at  timestamptz   [not null, default: `now()`]
-  updated_at  timestamptz   [not null, default: `now()`]
+  id uuid [pk, default: `gen_random_uuid()`]
+  class_id uuid [not null, note: 'Lớp nào học']
+  subject_id uuid [not null, note: 'Môn gì']
+  teacher_id uuid [not null, note: 'Ai dạy — đúng một giáo viên (BR-CRS-01)']
+  term term [not null, default: 'ca_nam']
+  description text [note: 'Mô tả chi tiết về lớp học phần']
+  status course_status [not null, default: 'active']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (teacher_id, status) [note: 'Danh sách lớp một giáo viên đang dạy (UC-CRS-02)']
-    (class_id, subject_id, term) [unique, note: 'Một lớp không có hai giáo viên cùng dạy một môn trong cùng học kỳ']
-    class_id
+    (class_id, subject_id, term) [unique, note: 'Một lớp không học cùng một môn hai lần trong cùng một học kỳ']
+    teacher_id [note: 'Màn "các lớp tôi dạy" của giáo viên']
+    subject_id [note: 'Lọc theo môn + tăng tốc kiểm tra RESTRICT khi xoá môn']
   }
 
-  Note: '''
-  Một dòng = "lớp 10A1 học môn Toán học kỳ 1, thầy Nam dạy".
-  Đây là thứ mà documents, quizzes, chat_sessions, analytics của M3..M9 sẽ trỏ
-  khoá ngoại về, dưới tên cột course_id.
-
-  KHÔNG có cột academic_year: suy ra từ classes.academic_year qua class_id.
-  Lưu ở hai nơi là sẽ có ngày lệch nhau.
-
-  KHÔNG có cột name: tên hiển thị "Toán 10A1 HK1" ghép từ subjects.name +
-  classes.class_name + term ở tầng schema, không lưu xuống DB.
-
-  KHÔNG có invite_code / auto_approve: nhà trường xếp lớp, học sinh không tự
-  tham gia bằng mã mời.
-  '''
+  Note: 'Đơn vị dạy học, và là thứ mà mọi module AI treo vào: documents, quizzes, chat_sessions, analytics_snapshots của M3..M9 đều có course_id trỏ về đây.'
 }
 
-// --- Quan hệ ----------------------------------------------------------------
-// Tách ra khỏi phần khai báo cột vì chỉ ở dạng Ref riêng mới khai báo được hành
-// vi ON DELETE. Chọn sai hành vi này là nguồn gốc của hai lỗi kinh điển: xoá
-// một dòng kéo theo mất dữ liệu không định trước, hoặc không xoá nổi vì vướng
-// khoá ngoại.
-//
-// Quan hệ 1-1 (dấu `-`) phải viết theo thứ tự CHA - CON: dbml đặt khoá ngoại
-// lên bảng bên PHẢI. Viết ngược lại thì FK rơi nhầm sang bảng cha.
+Table subjects {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(20) [not null, unique, note: 'Mã ngắn, ví dụ TOAN — dùng để hiển thị và import danh sách']
+  name varchar(100) [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
 
-// Xoá tài khoản thì hồ sơ đi theo — hồ sơ không có ý nghĩa độc lập.
+  Note: 'PK là uuid như mọi bảng khác, mã môn nằm ở cột code có unique. Lấy code làm PK thì đổi mã sẽ kéo theo phải sửa mọi khoá ngoại trỏ tới.'
+}
+
+// --- Khoá ngoại --------------------------------------------------------------
+// ON DELETE nói rõ ý đồ:
+//   cascade  = dữ liệu con vô nghĩa nếu thiếu cha (xoá lớp thì xoá danh sách môn)
+//   restrict = chặn xoá để khỏi mất lịch sử (còn lớp đang dạy thì không xoá môn)
+//   set null = quan hệ tuỳ chọn (GVCN nghỉ thì lớp thành chưa phân công)
+
 Ref: users.id - teacher_profiles.user_id [delete: cascade]
 Ref: users.id - student_profiles.user_id [delete: cascade]
 
-// 1-N chứ không phải 1-1: xét trên toàn bộ lịch sử, một giáo viên chủ nhiệm
-// nhiều lớp qua nhiều năm. "Tối đa một lớp" là ràng buộc TRONG MỘT NĂM HỌC, do
-// unique (homeroom_teacher_id, academic_year) ở trên đảm nhiệm.
-// set null: giáo viên chủ nhiệm nghỉ thì lớp vẫn còn, chỉ là chưa có ai chủ nhiệm.
-Ref: teacher_profiles.user_id < classes.homeroom_teacher_id [delete: set null]
+Ref: classes.homeroom_teacher_id > teacher_profiles.user_id [delete: set null]
 
-// restrict: còn lớp học phần đang chạy thì không xoá được giáo viên hay môn học.
-// Đây cũng là chốt chặn ở tầng DB cho BR-CRS-09 — hạ role một giáo viên đang có
-// lớp sẽ phải xoá teacher_profiles, và thao tác đó bị chặn tại đây.
-Ref: teacher_profiles.user_id < courses.teacher_id [delete: restrict]
-Ref: subjects.id < courses.subject_id [delete: restrict]
+Ref: class_students.class_id > classes.id [delete: cascade]
+Ref: class_students.student_id > student_profiles.user_id [delete: restrict]
 
-// cascade: xoá vĩnh viễn một lớp (chỉ Admin làm được) thì dọn luôn các lớp học
-// phần và danh sách học sinh của nó, vì chúng không còn ý nghĩa gì.
-Ref: classes.id < courses.class_id [delete: cascade]
-Ref: classes.id < class_students.class_id [delete: cascade]
-Ref: student_profiles.user_id < class_students.student_id [delete: cascade]
+Ref: courses.class_id > classes.id [delete: cascade]
+Ref: courses.subject_id > subjects.id [delete: restrict]
+Ref: courses.teacher_id > teacher_profiles.user_id [delete: restrict]

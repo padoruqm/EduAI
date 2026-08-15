@@ -27,12 +27,10 @@ NAMING_CONVENTION = {
     "pk": "pk_%(table_name)s",
 }
 
-
 # Lớp cha cho các model ORM
 class Base(DeclarativeBase):
     """Base chung. Alembic đọc `Base.metadata` để so sánh model với DB thật."""
-    metadata = MetaData(nameing_convention=NAMING_CONVENTION)
-
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 class TimestampMixin:
     """Hai cột thời gian mà bảng nào cũng cần.
@@ -50,6 +48,7 @@ class TimestampMixin:
         nullable=False,
         server_default=func.now(),
     )
+    
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

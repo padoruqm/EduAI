@@ -12,14 +12,15 @@ Việc import cả cụm cũng giải quyết luôn quan hệ khai báo bằng c
 nạp, nên chỉ cần `import app.models` là mọi quan hệ đều phân giải được.
 """
 
-from app.db.base import Base
+from app.constants.index import CourseStatus, Role, Term
+from app.database.base import Base
 from app.models.class_student import ClassStudent
-from app.models.course import Course, CourseStatus, Term
+from app.models.course import Course
 from app.models.school_class import SchoolClass
 from app.models.student_profile import StudentProfile
 from app.models.subject import Subject
 from app.models.teacher_profile import TeacherProfile
-from app.models.user import Role, User
+from app.models.user import User
 
 __all__ = [
     "Base",

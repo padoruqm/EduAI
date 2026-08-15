@@ -14,7 +14,7 @@ from sqlalchemy import Enum, ForeignKey, Index, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin
+from app.database.base import Base, TimestampMixin
 from app.constants.index import CourseStatus, Term
 
 if TYPE_CHECKING:
@@ -73,7 +73,16 @@ class Course(Base, TimestampMixin):
         server_default=CourseStatus.ACTIVE.value,
     )
 
-    school_class: Mapped[list["SchoolClass"]] = relationship(back_populates="courses")
+    __table_args__ = (
+        # Một lớp không học cùng một môn hai lần trong cùng một học kỳ.
+        UniqueConstraint("class_id", "subject_id", "term"),
+        # class_id đã có index nhờ unique ở trên (cột dẫn đầu), hai cột còn lại
+        # thì chưa: Postgres không tự tạo index cho khoá ngoại.
+        Index(None, "teacher_id"),  # màn "các lớp tôi dạy" của giáo viên
+        Index(None, "subject_id"),  # lọc theo môn + tăng tốc kiểm tra RESTRICT
+    )
+
+    school_class: Mapped["SchoolClass"] = relationship(back_populates="courses")
     subject: Mapped["Subject"] = relationship(back_populates="courses")
     teacher: Mapped["TeacherProfile"] = relationship(back_populates="courses")
 
