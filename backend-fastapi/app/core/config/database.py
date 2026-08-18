@@ -13,4 +13,4 @@ class DatabaseSettings(BaseSettings):
 def get_db_settings() -> DatabaseSettings:
     return DatabaseSettings()
 
-db_settings = get_db_settings
+db_settings = get_db_settings()
