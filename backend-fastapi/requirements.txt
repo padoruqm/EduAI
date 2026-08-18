@@ -1,0 +1,13 @@
+# --- core ---
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# --- database ---
+sqlalchemy[asyncio]>=2.0
+alembic>=1.13
+asyncpg                 # driver BẤT ĐỒNG BỘ  -> app chạy runtime dùng
+psycopg[binary]>=3.1    # driver ĐỒNG BỘ      -> Alembic dùng
+pgvector                # cột Vector(1536) của M3, khai báo sẵn
+tzdata
