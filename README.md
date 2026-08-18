@@ -1,4 +1,13 @@
 # EduAI
+open:
+cd /Users/quangminh/Desktop/project_EduAI
+docker compose up -d postgres          # Docker Desktop phải đang mở
+
+cd backend-fastapi
+source .venv/bin/activate           
+alembic current
+
+
 1. Kiến trúc phân tầng: Router → Service → Repository → Model và phản hồi qua Schema. Không bỏ qua layer.
 
 2. Không:
